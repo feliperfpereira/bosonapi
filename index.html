@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Higgs Audio TTS — Boson AI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-dim: #3730a3;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header h1 { font-size: 18px; font-weight: 700; color: var(--text); }
+    header span { color: var(--accent); }
+
+    .api-key-row {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .api-key-row label { color: var(--text-muted); font-size: 12px; }
+
+    .api-key-row input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 13px;
+      width: 280px;
+    }
+
+    .api-key-row input:focus { outline: none; border-color: var(--accent); }
+
+    .key-status {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background .3s;
+    }
+    .key-status.ok { background: var(--green); }
+    .key-status.loading { background: var(--yellow); }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 16px 24px 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .tab-btn {
+      padding: 9px 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+      transition: color .2s, border-color .2s;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    }
+
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent-hover); border-bottom-color: var(--accent); }
+
+    /* ── Main ── */
+    main { flex: 1; padding: 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Form elements ── */
+    .form-grid { display: grid; gap: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-row.trio { grid-template-columns: 1fr 1fr 1fr; }
+    .form-row.full { grid-template-columns: 1fr; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+
+    .field input,
+    .field select,
+    .field textarea {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color .2s;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus { outline: none; border-color: var(--accent); }
+
+    .field textarea { resize: vertical; min-height: 100px; }
+    .field select option { background: var(--surface2); }
+
+    .field .hint { font-size: 11px; color: var(--text-dim); }
+
+    /* ── Toggle ── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 38px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      left: 3px; top: 3px;
+      width: 16px; height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+    .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
+
+    /* ── Tags builder ── */
+    .tags-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .tags-section h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+
+    .tag-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .tag-group { display: flex; flex-direction: column; gap: 6px; }
+    .tag-group label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; }
+
+    .tag-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all .15s;
+      user-select: none;
+    }
+
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+    .chip.selected { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+
+    .chip.emotion { --accent: #8b5cf6; --accent-dim: #4c1d95; }
+    .chip.style   { --accent: #0891b2; --accent-dim: #0c4a6e; }
+    .chip.sfx     { --accent: #d97706; --accent-dim: #78350f; }
+    .chip.prosody { --accent: #059669; --accent-dim: #064e3b; }
+
+    .tags-preview {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--accent-hover);
+      min-height: 36px;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    .tags-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 9px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+    .btn-danger:hover { background: #7f1d1d33; }
+
+    /* ── Audio player ── */
+    .audio-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .audio-panel h3 { font-size: 14px; font-weight: 600; }
+
+    .audio-player-wrap audio {
+      width: 100%;
+      filter: invert(1) hue-rotate(180deg);
+      border-radius: var(--radius-sm);
+    }
+
+    .audio-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* ── Response box ── */
+    .response-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .response-box.success { border-color: var(--green); color: var(--green); }
+    .response-box.error   { border-color: var(--red);   color: var(--red); }
+
+    /* ── Status badge ── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .status-badge.loading { background: #78350f33; color: var(--yellow); }
+    .status-badge.ok      { background: #14532d33; color: var(--green); }
+    .status-badge.err     { background: #7f1d1d33; color: var(--red); }
+
+    /* ── Voices list ── */
+    .voices-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .voice-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .voice-card .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .voice-card .info { flex: 1; }
+    .voice-card .info .name { font-weight: 600; font-size: 14px; }
+    .voice-card .info .meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+
+    .voice-card .use-btn {
+      padding: 6px 14px;
+      font-size: 12px;
+    }
+
+    /* ── File upload ── */
+    .file-drop {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--accent);
+      background: #3730a310;
+    }
+
+    .file-drop p { color: var(--text-muted); font-size: 13px; margin-top: 8px; }
+    .file-drop .icon { font-size: 28px; }
+
+    .file-name {
+      font-size: 12px;
+      color: var(--green);
+      margin-top: 6px;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
+    }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      margin-bottom: -6px;
+    }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    /* ── Ref audio method toggle ── */
+    .method-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+    }
+
+    .method-tab {
+      flex: 1;
+      padding: 6px 12px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all .15s;
+    }
+
+    .method-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .scrollable { overflow-y: auto; max-height: 420px; }
+
+    @media (max-width: 640px) {
+      .form-row, .form-row.trio { grid-template-columns: 1fr; }
+      .tag-groups { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+      .api-key-row input { width: 160px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Header ── -->
+  <header>
+    <h1>Higgs Audio <span>TTS</span></h1>
+    <div style="color:var(--text-dim);font-size:12px;">Boson AI · v3</div>
+    <div class="api-key-row">
+      <label>API KEY</label>
+      <div class="key-status" id="keyStatus"></div>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" />
+      <button class="btn btn-ghost" onclick="testKey()" style="padding:5px 12px;font-size:12px;" title="Testar API Key">Testar</button>
+    </div>
+  </header>
+
+  <!-- ── Tabs ── -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="tts">🎙 Gerar Áudio</button>
+    <button class="tab-btn" data-tab="clone">🧬 Clonar Voz</button>
+    <button class="tab-btn" data-tab="voices">📋 Minhas Vozes</button>
+    <button class="tab-btn" data-tab="get-voice">🔍 Buscar Voz</button>
+  </div>
+
+  <!-- ── Main ── -->
+  <main>
+
+    <!-- ════════════════════════════════
+         TAB 1 — TTS
+    ════════════════════════════════ -->
+    <div class="tab-panel active" id="tab-tts">
+      <div class="form-grid">
+
+        <div class="field">
+          <label>Texto *</label>
+          <textarea id="tts-input" placeholder="Digite o texto que deseja converter em fala..." rows="5"></textarea>
+          <span class="hint" id="tts-char-count">0 / 5000 caracteres</span>
+        </div>
+
+        <div class="form-row trio">
+          <div class="field">
+            <label>Modelo</label>
+            <select id="tts-model">
+              <option value="higgs-audio-v3-tts">higgs-audio-v3-tts</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Formato</label>
+            <select id="tts-format">
+              <option value="mp3">MP3</option>
+              <option value="wav">WAV</option>
+              <option value="flac">FLAC</option>
+              <option value="opus">Opus</option>
+              <option value="aac">AAC</option>
+              <option value="pcm">PCM</option>
+            </select>
+            <span class="hint" id="stream-fmt-note" style="display:none;color:var(--yellow);">⚠ Streaming exige PCM — formato fixado automaticamente</span>
+          </div>
+          <div class="field">
+            <label>Streaming (PCM)</label>
+            <div class="toggle-row" style="margin-top:4px;">
+              <label class="toggle">
+                <input type="checkbox" id="tts-stream" />
+                <span class="toggle-track"></span>
+              </label>
+              <span style="font-size:12px;color:var(--text-muted)">Chunks de PCM</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Voice selection -->
+        <div class="section-label">Voz</div>
+
+        <div class="field">
+          <label>Voz</label>
+          <div style="display:flex;gap:8px;align-items:stretch;">
+            <select id="tts-voice-select" style="flex:1;">
+              <optgroup label="── Presets ──">
+                <option value="default">default</option>
+                <option value="chloe">Chloe — Feminina, amigável</option>
+                <option value="eleanor">Eleanor</option>
+                <option value="jake">Jake</option>
+                <option value="marcus">Marcus — Masculino, acadêmico</option>
+                <option value="nora">Nora — Narrativa</option>
+                <option value="oliver">Oliver — Calmo, articulado</option>
+              </optgroup>
+              <optgroup label="── Minhas Vozes ──" id="custom-voices-group">
+                <option value="__loading__" disabled>Carregue suas vozes →</option>
+              </optgroup>
+            </select>
+            <button class="btn btn-ghost" id="reload-voices-btn" onclick="loadVoicesIntoSelect()" title="Carregar minhas vozes" style="padding:0 12px;font-size:16px;">↺</button>
+          </div>
+          <span class="hint" id="voice-select-hint">Clique em ↺ para carregar suas vozes clonadas</span>
+        </div>
+
+        <!-- Voice cloning inline -->
+        <div class="section-label">Clonagem inline (opcional)</div>
+
+        <div class="form-grid" style="gap:12px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+          <div class="field">
+            <label>Método</label>
+            <div class="method-tabs">
+              <button class="method-tab active" data-method="none" onclick="selectRefMethod('none',this)">Nenhum</button>
+              <button class="method-tab" data-method="file" onclick="selectRefMethod('file',this)">Arquivo</button>
+              <button class="method-tab" data-method="url" onclick="selectRefMethod('url',this)">URL</button>
+            </div>
+          </div>
+
+          <div id="ref-file-area" style="display:none;">
+            <div class="file-drop" id="tts-drop" onclick="document.getElementById('tts-ref-file').click()">
+              <div class="icon">🎵</div>
+              <p>Clique ou arraste o áudio de referência</p>
+              <p style="font-size:11px;margin-top:4px;">MP3, WAV, FLAC, AAC, Opus · máx 10 MB · mín 3s</p>
+              <input type="file" id="tts-ref-file" accept="audio/*" style="display:none;" />
+              <div class="file-name" id="tts-ref-name"></div>
+            </div>
+          </div>
+
+          <div id="ref-url-area" style="display:none;" class="field">
+            <label>URL do áudio</label>
+            <input type="text" id="tts-ref-url" placeholder="https://..." />
+          </div>
+
+          <div class="field" id="ref-text-area" style="display:none;">
+            <label>Transcrição do áudio (ref_text)</label>
+            <textarea id="tts-ref-text" placeholder="Transcrição exata do áudio de referência..." rows="2"></textarea>
+            <span class="hint">Recomendado para melhor qualidade</span>
+          </div>
+        </div>
+
+        <!-- Inline tags -->
+        <div class="section-label">Controle inline</div>
+
+        <div class="tags-section">
+          <h3>Tags de controle — clique para adicionar ao texto</h3>
+
+          <div class="tag-groups">
+            <div class="tag-group">
+              <label>Emoção</label>
+              <div class="tag-chips" id="chips-emotion">
+                <!-- filled by JS -->
+              </div>
+            </div>
+            <div class="tag-group">
+              <label>Estilo</label>
+              <div class="tag-chips" id="chips-style">
+              </div>
+            </div>
+            <div class="tag-group">
+              <label>Efeitos Sonoros (SFX)</label>
+              <div class="tag-chips" id="chips-sfx">
+              </div>
+            </div>
+            <div class="tag-group">
+              <label>Prosódia</label>
+              <div class="tag-chips" id="chips-prosody">
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Preview das tags selecionadas</label>
+            <div class="tags-preview" id="tags-preview">— nenhuma selecionada —</div>
+          </div>
+          <div class="tags-actions">
+            <button class="btn btn-ghost" onclick="insertTagsIntoText()" style="font-size:12px;">Inserir no início do texto</button>
+            <button class="btn btn-ghost" onclick="clearTags()" style="font-size:12px;">Limpar seleção</button>
+          </div>
+        </div>
+
+        <!-- Generate button -->
+        <button class="btn btn-primary" id="tts-btn" onclick="generateSpeech()" style="width:100%;padding:14px;font-size:15px;">
+          <span>▶</span> Gerar Áudio
+        </button>
+
+        <!-- Result -->
+        <div id="tts-result" style="display:none;" class="audio-panel">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h3>Resultado</h3>
+            <span class="status-badge ok" id="tts-status-badge">✓ Sucesso</span>
+          </div>
+          <div class="audio-player-wrap">
+            <audio id="tts-audio" controls></audio>
+          </div>
+          <div class="audio-actions">
+            <a id="tts-download" class="btn btn-ghost" download="audio.mp3">⬇ Download</a>
+            <button class="btn btn-ghost" onclick="copyAudioBase64()">📋 Copiar Base64</button>
+          </div>
+        </div>
+
+        <div id="tts-error" class="response-box error" style="display:none;"></div>
+
+      </div>
+    </div><!-- /tab-tts -->
+
+    <!-- ════════════════════════════════
+         TAB 2 — CLONE VOICE
+    ════════════════════════════════ -->
+    <div class="tab-panel" id="tab-clone">
+      <div class="form-grid">
+
+        <div style="background:var(--surface);border:1px solid #f59e0b44;border-radius:var(--radius);padding:14px 18px;color:#f59e0b;font-size:13px;">
+          ⚠ Você deve ter os direitos sobre a voz que vai clonar.
+        </div>
+
+        <div class="field">
+          <label>Áudio de referência *</label>
+          <div class="file-drop" id="clone-drop" onclick="document.getElementById('clone-ref-file').click()">
+            <div class="icon">🎤</div>
+            <p>Clique ou arraste o áudio para clonar</p>
+            <p style="font-size:11px;margin-top:4px;">MP3, WAV, FLAC, AAC, Opus · máx 10 MB · mín 3s · ideal 5–30s</p>
+            <input type="file" id="clone-ref-file" accept="audio/*" style="display:none;" />
+            <div class="file-name" id="clone-ref-name"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <span style="color:var(--text-dim);font-size:12px;">ou URL:</span>
+            <input type="text" id="clone-ref-url" placeholder="https://..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Transcrição do áudio *</label>
+          <textarea id="clone-ref-text" placeholder="Transcrição exata do que é falado no áudio..." rows="3"></textarea>
+          <span class="hint">Mínimo 1 caractere. Quanto mais precisa, melhor o clone.</span>
+        </div>
+
+        <div class="field">
+          <label>Descrição (opcional)</label>
+          <input type="text" id="clone-description" placeholder="Ex: Voz masculina, grave, português BR..." />
+        </div>
+
+        <button class="btn btn-primary" id="clone-btn" onclick="createVoice()" style="width:100%;padding:14px;font-size:15px;">
+          <span>🧬</span> Criar Voice ID
+        </button>
+
+        <div id="clone-result" style="display:none;" class="audio-panel">
+          <h3>Voice ID criado!</h3>
+          <div class="response-box success" id="clone-response"></div>
+          <button class="btn btn-ghost" onclick="useClonedVoice()" style="font-size:12px;">↗ Usar esta voz na aba TTS</button>
+        </div>
+
+        <div id="clone-error" class="response-box error" style="display:none;"></div>
+
+      </div>
+    </div><!-- /tab-clone -->
+
+    <!-- ════════════════════════════════
+         TAB 3 — LIST VOICES
+    ════════════════════════════════ -->
+    <div class="tab-panel" id="tab-voices">
+      <div class="form-grid">
+
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="list-btn" onclick="listVoices()">
+            <span>🔄</span> Carregar Vozes
+          </button>
+          <span id="voices-count" style="color:var(--text-dim);font-size:12px;"></span>
+        </div>
+
+        <div id="voices-error" class="response-box error" style="display:none;"></div>
+
+        <div id="voices-list-wrap" class="voices-list" style="display:none;">
+          <!-- built by JS -->
+        </div>
+
+        <!-- Preset voices always shown -->
+        <div class="section-label" style="margin-top:8px;">Vozes Preset</div>
+        <div class="voices-list">
+          <div class="voice-card">
+            <div class="avatar">👩</div>
+            <div class="info">
+              <div class="name">Chloe</div>
+              <div class="meta">Feminina · amigável · clara</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('chloe')">Usar</button>
+          </div>
+          <div class="voice-card">
+            <div class="avatar">👩‍🦱</div>
+            <div class="info">
+              <div class="name">Eleanor</div>
+              <div class="meta">Feminina</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('eleanor')">Usar</button>
+          </div>
+          <div class="voice-card">
+            <div class="avatar">👨</div>
+            <div class="info">
+              <div class="name">Jake</div>
+              <div class="meta">Masculino</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('jake')">Usar</button>
+          </div>
+          <div class="voice-card">
+            <div class="avatar">👨‍🏫</div>
+            <div class="info">
+              <div class="name">Marcus</div>
+              <div class="meta">Masculino · acadêmico · entusiasmado</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('marcus')">Usar</button>
+          </div>
+          <div class="voice-card">
+            <div class="avatar">👩‍🎤</div>
+            <div class="info">
+              <div class="name">Nora</div>
+              <div class="meta">Feminina · narrativa</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('nora')">Usar</button>
+          </div>
+          <div class="voice-card">
+            <div class="avatar">🧑</div>
+            <div class="info">
+              <div class="name">Oliver</div>
+              <div class="meta">Masculino · calmo · articulado</div>
+            </div>
+            <button class="btn btn-ghost use-btn" onclick="usePreset('oliver')">Usar</button>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /tab-voices -->
+
+    <!-- ════════════════════════════════
+         TAB 4 — GET VOICE
+    ════════════════════════════════ -->
+    <div class="tab-panel" id="tab-get-voice">
+      <div class="form-grid">
+
+        <div class="form-row">
+          <div class="field">
+            <label>Voice ID *</label>
+            <input type="text" id="get-voice-id" placeholder="voice_abc123..." />
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn btn-primary" id="get-voice-btn" onclick="getVoice()" style="height:40px;">
+              🔍 Buscar
+            </button>
+          </div>
+        </div>
+
+        <div id="get-voice-result" style="display:none;" class="audio-panel">
+          <h3>Informações da Voz</h3>
+          <div class="response-box success" id="get-voice-response"></div>
+          <button class="btn btn-ghost" onclick="useFoundVoice()" style="font-size:12px;">↗ Usar na aba TTS</button>
+        </div>
+
+        <div id="get-voice-error" class="response-box error" style="display:none;"></div>
+
+      </div>
+    </div><!-- /tab-get-voice -->
+
+  </main>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────
+const BASE = 'https://api.boson.ai/v1';
+
+const EMOTIONS = ['elation','amusement','enthusiasm','determination','pride','contentment','affection','relief','contemplation','confusion','surprise','awe','longing','arousal','anger','fear','disgust','bitterness','sadness','shame','helplessness'];
+const STYLES   = ['singing','shouting','whispering'];
+const SFX      = ['cough','laughter','crying','screaming','burping','humming','sigh','sniff','sneeze'];
+const PROSODY  = ['speed_very_slow','speed_slow','speed_fast','speed_very_fast','pitch_low','pitch_high','pause','long_pause','expressive_high','expressive_low'];
+
+// ─── State ───────────────────────────────────────────────────
+const selectedTags = { emotion: null, style: null, sfx: [], prosody: [] };
+let ttsAudioBlob = null;
+let clonedVoiceId = null;
+let foundVoiceId = null;
+let refMethod = 'none';
+
+// ─── Init ─────────────────────────────────────────────────────
+const apiKeyEl = document.getElementById('apiKey');
+const keyStatus = document.getElementById('keyStatus');
+
+apiKeyEl.value = localStorage.getItem('boson_key') || '';
+updateKeyStatus();
+
+apiKeyEl.addEventListener('input', () => {
+  localStorage.setItem('boson_key', apiKeyEl.value.trim());
+  updateKeyStatus();
+});
+
+function updateKeyStatus() {
+  const ok = apiKeyEl.value.trim().length > 10;
+  keyStatus.className = 'key-status' + (ok ? ' ok' : '');
+}
+
+function getKey() {
+  const k = apiKeyEl.value.trim();
+  if (!k) { alert('Insira sua API Key no campo no topo da página.'); return null; }
+  return k;
+}
+
+async function testKey() {
+  const key = apiKeyEl.value.trim();
+  if (!key) { alert('Digite a API Key primeiro.'); return; }
+  keyStatus.className = 'key-status loading' ;
+  keyStatus.title = 'Testando...';
+  try {
+    const resp = await fetch(`${BASE}/voices`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+    const body = await resp.text();
+    if (resp.ok) {
+      keyStatus.className = 'key-status ok';
+      keyStatus.title = 'Key válida ✓';
+      alert('✓ API Key válida!');
+    } else {
+      keyStatus.className = 'key-status';
+      keyStatus.title = `Erro ${resp.status}`;
+      alert(`✗ Key inválida — HTTP ${resp.status}\n\n${body}`);
+    }
+  } catch (e) {
+    keyStatus.className = 'key-status';
+    keyStatus.title = e.message;
+    alert('Erro de conexão: ' + e.message);
+  }
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ─── Char counter ─────────────────────────────────────────────
+const ttsInput = document.getElementById('tts-input');
+ttsInput.addEventListener('input', () => {
+  const n = ttsInput.value.length;
+  const el = document.getElementById('tts-char-count');
+  el.textContent = n + ' / 5000 caracteres';
+  el.style.color = n > 4800 ? 'var(--red)' : 'var(--text-dim)';
+});
+
+// ─── Stream toggle ────────────────────────────────────────────
+document.getElementById('tts-stream').addEventListener('change', function() {
+  const fmt = document.getElementById('tts-format');
+  const note = document.getElementById('stream-fmt-note');
+  if (this.checked) {
+    fmt.value = 'pcm';
+    fmt.style.opacity = '0.4';
+    fmt.style.pointerEvents = 'none';
+    note.style.display = '';
+  } else {
+    fmt.style.opacity = '';
+    fmt.style.pointerEvents = '';
+    note.style.display = 'none';
+  }
+});
+
+// ─── Local nicknames (localStorage) ──────────────────────────
+function getNicknames() {
+  try { return JSON.parse(localStorage.getItem('boson_nicknames') || '{}'); } catch { return {}; }
+}
+function saveNickname(voiceId, name) {
+  const n = getNicknames();
+  if (name) n[voiceId] = name; else delete n[voiceId];
+  localStorage.setItem('boson_nicknames', JSON.stringify(n));
+}
+function voiceLabel(voiceId, apiDescription) {
+  if (!voiceId) return '(sem ID)';
+  const nick = getNicknames()[voiceId];
+  if (nick) return nick;
+  if (apiDescription) return apiDescription;
+  return voiceId.length > 22 ? voiceId.slice(0, 20) + '…' : voiceId;
+}
+
+function extractVoiceId(v) {
+  return v.voice || v.id || v.voice_id || v.voiceId || Object.values(v).find(x => typeof x === 'string' && x.startsWith('voice_')) || '';
+}
+
+// ─── Load custom voices into TTS select ───────────────────────
+async function loadVoicesIntoSelect() {
+  const key = getKey();
+  if (!key) return;
+
+  const btn = document.getElementById('reload-voices-btn');
+  const hint = document.getElementById('voice-select-hint');
+  const group = document.getElementById('custom-voices-group');
+
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  hint.textContent = 'Carregando...';
+
+  try {
+    const resp = await fetch(`${BASE}/voices`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`HTTP ${resp.status}${body ? ': ' + body : ''}`);
+    }
+
+    const data = await resp.json();
+    console.log('[boson] list voices response:', JSON.stringify(data));
+
+    const voices = Array.isArray(data) ? data
+      : Array.isArray(data.data)   ? data.data
+      : Array.isArray(data.voices) ? data.voices
+      : [];
+
+    group.innerHTML = '';
+    if (voices.length === 0) {
+      const opt = document.createElement('option');
+      opt.disabled = true;
+      opt.textContent = 'Nenhuma voz clonada encontrada';
+      group.appendChild(opt);
+      hint.textContent = 'Nenhuma voz customizada ainda.';
+    } else {
+      voices.forEach(v => {
+        const vid = extractVoiceId(v);
+        const opt = document.createElement('option');
+        opt.value = vid;
+        opt.textContent = voiceLabel(vid, v.description || v.desc || '');
+        group.appendChild(opt);
+      });
+      hint.textContent = `${voices.length} voz(es) customizada(s) — clique ✏ em "Minhas Vozes" para renomear`;
+    }
+  } catch (err) {
+    console.error('[boson] loadVoicesIntoSelect error:', err);
+    hint.textContent = 'Erro ao carregar: ' + err.message;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↺';
+}
+
+// ─── Ref audio method ─────────────────────────────────────────
+function selectRefMethod(method, btn) {
+  refMethod = method;
+  document.querySelectorAll('.method-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ref-file-area').style.display = method === 'file' ? '' : 'none';
+  document.getElementById('ref-url-area').style.display  = method === 'url'  ? '' : 'none';
+  document.getElementById('ref-text-area').style.display = method !== 'none' ? '' : 'none';
+}
+
+// ─── File drop: TTS ───────────────────────────────────────────
+const ttsRefFile = document.getElementById('tts-ref-file');
+const ttsDrop = document.getElementById('tts-drop');
+
+ttsRefFile.addEventListener('change', () => {
+  if (ttsRefFile.files[0]) {
+    document.getElementById('tts-ref-name').textContent = '✓ ' + ttsRefFile.files[0].name;
+  }
+});
+
+['dragover','dragleave','drop'].forEach(e => ttsDrop.addEventListener(e, ev => {
+  ev.preventDefault();
+  if (e === 'dragover') ttsDrop.classList.add('dragover');
+  else { ttsDrop.classList.remove('dragover'); }
+  if (e === 'drop' && ev.dataTransfer.files[0]) {
+    ttsRefFile.files = ev.dataTransfer.files;
+    document.getElementById('tts-ref-name').textContent = '✓ ' + ev.dataTransfer.files[0].name;
+  }
+}));
+
+// ─── File drop: Clone ─────────────────────────────────────────
+const cloneRefFile = document.getElementById('clone-ref-file');
+const cloneDrop = document.getElementById('clone-drop');
+
+cloneRefFile.addEventListener('change', () => {
+  if (cloneRefFile.files[0]) {
+    document.getElementById('clone-ref-name').textContent = '✓ ' + cloneRefFile.files[0].name;
+  }
+});
+
+['dragover','dragleave','drop'].forEach(e => cloneDrop.addEventListener(e, ev => {
+  ev.preventDefault();
+  if (e === 'dragover') cloneDrop.classList.add('dragover');
+  else cloneDrop.classList.remove('dragover');
+  if (e === 'drop' && ev.dataTransfer.files[0]) {
+    cloneRefFile.files = ev.dataTransfer.files;
+    document.getElementById('clone-ref-name').textContent = '✓ ' + ev.dataTransfer.files[0].name;
+  }
+}));
+
+// ─── Build tag chips ──────────────────────────────────────────
+function buildChips(containerId, items, category) {
+  const el = document.getElementById(containerId);
+  items.forEach(val => {
+    const c = document.createElement('span');
+    c.className = 'chip ' + category;
+    c.textContent = val;
+    c.dataset.val = val;
+    c.dataset.cat = category;
+    c.addEventListener('click', () => toggleTag(c, category, val));
+    el.appendChild(c);
+  });
+}
+
+buildChips('chips-emotion', EMOTIONS, 'emotion');
+buildChips('chips-style',   STYLES,   'style');
+buildChips('chips-sfx',     SFX,      'sfx');
+buildChips('chips-prosody', PROSODY,  'prosody');
+
+function toggleTag(chip, cat, val) {
+  if (cat === 'emotion' || cat === 'style') {
+    // single select
+    document.querySelectorAll('.chip.' + cat).forEach(c => c.classList.remove('selected'));
+    if (selectedTags[cat] === val) { selectedTags[cat] = null; }
+    else { selectedTags[cat] = val; chip.classList.add('selected'); }
+  } else {
+    // multi select
+    const idx = selectedTags[cat].indexOf(val);
+    if (idx === -1) { selectedTags[cat].push(val); chip.classList.add('selected'); }
+    else { selectedTags[cat].splice(idx, 1); chip.classList.remove('selected'); }
+  }
+  updateTagsPreview();
+}
+
+function buildTagString() {
+  let s = '';
+  if (selectedTags.emotion) s += `<|emotion:${selectedTags.emotion}|>`;
+  if (selectedTags.style)   s += `<|style:${selectedTags.style}|>`;
+  selectedTags.sfx.forEach(v     => s += `<|sfx:${v}|>`);
+  selectedTags.prosody.forEach(v => s += `<|prosody:${v}|>`);
+  return s;
+}
+
+function updateTagsPreview() {
+  const s = buildTagString();
+  document.getElementById('tags-preview').textContent = s || '— nenhuma selecionada —';
+}
+
+function insertTagsIntoText() {
+  const tags = buildTagString();
+  if (!tags) return;
+  ttsInput.value = tags + ttsInput.value;
+  ttsInput.dispatchEvent(new Event('input'));
+}
+
+function clearTags() {
+  selectedTags.emotion = null;
+  selectedTags.style = null;
+  selectedTags.sfx = [];
+  selectedTags.prosody = [];
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+  updateTagsPreview();
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+function setLoading(btnId, loading, label = '') {
+  const btn = document.getElementById(btnId);
+  if (loading) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Aguarde...';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = label;
+  }
+}
+
+async function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result); // data URI
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ─── PCM → WAV ────────────────────────────────────────────────
+// API streams raw 16-bit signed PCM at 24 kHz mono; wrap it in a WAV
+// container so the browser <audio> element can play it.
+function pcmToWav(pcmBuffer, sampleRate = 24000, channels = 1, bitsPerSample = 16) {
+  const dataLen = pcmBuffer.byteLength;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const v = new DataView(buf);
+  const str = (off, s) => [...s].forEach((c, i) => v.setUint8(off + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true);
+  str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);                                    // PCM
+  v.setUint16(22, channels, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * channels * bitsPerSample / 8, true);
+  v.setUint16(32, channels * bitsPerSample / 8, true);
+  v.setUint16(34, bitsPerSample, true);
+  str(36, 'data'); v.setUint32(40, dataLen, true);
+  new Uint8Array(buf, 44).set(new Uint8Array(pcmBuffer));
+  return buf;
+}
+
+// ─── TTS ──────────────────────────────────────────────────────
+async function generateSpeech() {
+  const key = getKey();
+  if (!key) return;
+
+  const input = ttsInput.value.trim();
+  if (!input) { alert('Digite um texto.'); return; }
+  if (input.length > 5000) { alert('Texto excede 5000 caracteres.'); return; }
+
+  setLoading('tts-btn', true);
+  document.getElementById('tts-result').style.display = 'none';
+  document.getElementById('tts-error').style.display = 'none';
+
+  const body = {
+    model: document.getElementById('tts-model').value,
+    input,
+    response_format: document.getElementById('tts-stream').checked ? 'pcm' : document.getElementById('tts-format').value,
+    stream: document.getElementById('tts-stream').checked,
+  };
+
+  // voice
+  body.voice = document.getElementById('tts-voice-select').value;
+
+  // ref audio
+  if (refMethod === 'file' && ttsRefFile.files[0]) {
+    body.ref_audio = await fileToBase64(ttsRefFile.files[0]);
+    const rt = document.getElementById('tts-ref-text').value.trim();
+    if (rt) body.ref_text = rt;
+  } else if (refMethod === 'url') {
+    const url = document.getElementById('tts-ref-url').value.trim();
+    if (url) {
+      body.ref_audio = url;
+      const rt = document.getElementById('tts-ref-text').value.trim();
+      if (rt) body.ref_text = rt;
+    }
+  }
+
+  try {
+    const resp = await fetch(`${BASE}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${txt}`);
+    }
+
+    let blob;
+    if (body.stream) {
+      // Streaming PCM: collect chunks and wrap in WAV header
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        total += value.length;
+      }
+      const pcm = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { pcm.set(c, off); off += c.length; }
+      blob = new Blob([pcmToWav(pcm.buffer)], { type: 'audio/wav' });
+    } else {
+      blob = await resp.blob();
+    }
+
+    ttsAudioBlob = blob;
+
+    const url = URL.createObjectURL(blob);
+    const audio = document.getElementById('tts-audio');
+    audio.src = url;
+
+    const ext = body.stream ? 'wav' : body.response_format;
+    const dl = document.getElementById('tts-download');
+    dl.href = url;
+    dl.download = `audio_${Date.now()}.${ext}`;
+
+    document.getElementById('tts-result').style.display = '';
+    setLoading('tts-btn', false, '<span>▶</span> Gerar Áudio');
+
+  } catch (err) {
+    document.getElementById('tts-error').style.display = '';
+    document.getElementById('tts-error').textContent = err.message;
+    setLoading('tts-btn', false, '<span>▶</span> Gerar Áudio');
+  }
+}
+
+async function copyAudioBase64() {
+  if (!ttsAudioBlob) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    navigator.clipboard.writeText(reader.result).then(() => alert('Base64 copiado!'));
+  };
+  reader.readAsDataURL(ttsAudioBlob);
+}
+
+// ─── Create Voice ─────────────────────────────────────────────
+async function createVoice() {
+  const key = getKey();
+  if (!key) return;
+
+  const refText = document.getElementById('clone-ref-text').value.trim();
+  if (!refText) { alert('Informe a transcrição do áudio.'); return; }
+
+  const hasFile = cloneRefFile.files[0];
+  const hasUrl  = document.getElementById('clone-ref-url').value.trim();
+  if (!hasFile && !hasUrl) { alert('Forneça o áudio (arquivo ou URL).'); return; }
+
+  setLoading('clone-btn', true);
+  document.getElementById('clone-result').style.display = 'none';
+  document.getElementById('clone-error').style.display = 'none';
+
+  try {
+    let resp;
+
+    if (hasFile) {
+      // multipart/form-data
+      const fd = new FormData();
+      fd.append('ref_audio', cloneRefFile.files[0]);
+      fd.append('ref_text', refText);
+      const desc = document.getElementById('clone-description').value.trim();
+      if (desc) fd.append('description', desc);
+
+      resp = await fetch(`${BASE}/voices`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}` },
+        body: fd,
+      });
+    } else {
+      // JSON with URL
+      const bodyObj = { ref_audio: hasUrl, ref_text: refText };
+      const desc = document.getElementById('clone-description').value.trim();
+      if (desc) bodyObj.description = desc;
+
+      resp = await fetch(`${BASE}/voices`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bodyObj),
+      });
+    }
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${txt}`);
+    }
+
+    const data = await resp.json();
+    clonedVoiceId = data.voice;
+
+    document.getElementById('clone-response').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('clone-result').style.display = '';
+    setLoading('clone-btn', false, '<span>🧬</span> Criar Voice ID');
+
+  } catch (err) {
+    document.getElementById('clone-error').style.display = '';
+    document.getElementById('clone-error').textContent = err.message;
+    setLoading('clone-btn', false, '<span>🧬</span> Criar Voice ID');
+  }
+}
+
+function useClonedVoice() {
+  if (!clonedVoiceId) return;
+  injectCustomVoiceOption(clonedVoiceId);
+  document.querySelector('[data-tab="tts"]').click();
+}
+
+// ─── List Voices ──────────────────────────────────────────────
+async function listVoices() {
+  const key = getKey();
+  if (!key) return;
+
+  setLoading('list-btn', true);
+  document.getElementById('voices-error').style.display = 'none';
+  document.getElementById('voices-list-wrap').style.display = 'none';
+  document.getElementById('voices-count').textContent = '';
+
+  try {
+    const resp = await fetch(`${BASE}/voices`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${txt}`);
+    }
+
+    const data = await resp.json();
+    console.log('[boson] list voices (tab) response:', JSON.stringify(data));
+
+    const voices = Array.isArray(data) ? data
+      : Array.isArray(data.data)   ? data.data
+      : Array.isArray(data.voices) ? data.voices
+      : [];
+
+    document.getElementById('voices-count').textContent = voices.length
+      ? `${voices.length} voz(es) custom encontrada(s)`
+      : 'Nenhuma voz customizada ainda.';
+
+    const wrap = document.getElementById('voices-list-wrap');
+    wrap.innerHTML = '';
+
+    if (voices.length) {
+      voices.forEach(v => {
+        const vid = extractVoiceId(v);
+        const card = document.createElement('div');
+        card.className = 'voice-card';
+        const label = voiceLabel(vid, v.description || v.desc || '');
+        const idShort = vid.length > 24 ? vid.slice(0, 22) + '…' : vid;
+        const date = v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR') : '';
+        card.innerHTML = `
+          <div class="avatar">🎭</div>
+          <div class="info">
+            <div class="name" style="display:flex;align-items:center;gap:6px;">
+              <span id="lbl-${vid}">${label}</span>
+              <button onclick="renameVoice('${vid}')" title="Renomear" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:13px;padding:0 2px;">✏</button>
+            </div>
+            <div class="meta" style="font-family:monospace;font-size:11px;">${idShort}${date ? ' · ' + date : ''}</div>
+          </div>
+          <button class="btn btn-ghost use-btn" onclick="usePreset('${vid}')">Usar</button>
+        `;
+        wrap.appendChild(card);
+      });
+      wrap.style.display = '';
+    }
+
+    setLoading('list-btn', false, '<span>🔄</span> Carregar Vozes');
+
+  } catch (err) {
+    document.getElementById('voices-error').style.display = '';
+    document.getElementById('voices-error').textContent = err.message;
+    setLoading('list-btn', false, '<span>🔄</span> Carregar Vozes');
+  }
+}
+
+// ─── Rename voice locally ─────────────────────────────────────
+function renameVoice(voiceId) {
+  const current = getNicknames()[voiceId] || '';
+  const novo = prompt('Apelido para esta voz (deixe vazio para remover):', current);
+  if (novo === null) return; // cancelou
+  saveNickname(voiceId, novo.trim());
+  // update label in card
+  const lbl = document.getElementById('lbl-' + voiceId);
+  if (lbl) lbl.textContent = voiceLabel(voiceId, null);
+  // update select option if present
+  const opt = document.querySelector(`#tts-voice-select option[value="${voiceId}"]`);
+  if (opt) opt.textContent = voiceLabel(voiceId, null);
+}
+
+// ─── Get Voice ────────────────────────────────────────────────
+async function getVoice() {
+  const key = getKey();
+  if (!key) return;
+
+  const id = document.getElementById('get-voice-id').value.trim();
+  if (!id) { alert('Informe o Voice ID.'); return; }
+
+  setLoading('get-voice-btn', true);
+  document.getElementById('get-voice-result').style.display = 'none';
+  document.getElementById('get-voice-error').style.display = 'none';
+
+  try {
+    const resp = await fetch(`${BASE}/voices/${encodeURIComponent(id)}`, {
+      headers: { 'Authorization': `Bearer ${key}` },
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${txt}`);
+    }
+
+    const data = await resp.json();
+    foundVoiceId = data.voice;
+
+    document.getElementById('get-voice-response').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('get-voice-result').style.display = '';
+    setLoading('get-voice-btn', false, '🔍 Buscar');
+
+  } catch (err) {
+    document.getElementById('get-voice-error').style.display = '';
+    document.getElementById('get-voice-error').textContent = err.message;
+    setLoading('get-voice-btn', false, '🔍 Buscar');
+  }
+}
+
+function useFoundVoice() {
+  if (!foundVoiceId) return;
+  injectCustomVoiceOption(foundVoiceId);
+  document.querySelector('[data-tab="tts"]').click();
+}
+
+// ─── Use preset ───────────────────────────────────────────────
+function usePreset(name) {
+  const sel = document.getElementById('tts-voice-select');
+  sel.value = name;
+  document.querySelector('[data-tab="tts"]').click();
+}
+
+// inject a custom voice option if not already present, then select it
+function injectCustomVoiceOption(voiceId) {
+  const sel = document.getElementById('tts-voice-select');
+  const group = document.getElementById('custom-voices-group');
+  // remove placeholder
+  const placeholder = group.querySelector('[value="__loading__"]');
+  if (placeholder) placeholder.remove();
+  // add if not present
+  if (!sel.querySelector(`option[value="${voiceId}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = voiceId;
+    opt.textContent = voiceId;
+    group.appendChild(opt);
+  }
+  sel.value = voiceId;
+}
+</script>
+</body>
+</html>
