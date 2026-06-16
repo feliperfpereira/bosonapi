@@ -380,6 +380,36 @@
       margin-top: 6px;
     }
 
+    .trim-editor {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .trim-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .trim-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+
+    .trim-grid input[type="range"] {
+      width: 100%;
+      padding: 0;
+    }
+
     /* ── Divider ── */
     .divider {
       border: none;
@@ -441,6 +471,7 @@
     @media (max-width: 640px) {
       .form-row, .form-row.trio { grid-template-columns: 1fr; }
       .tag-groups { grid-template-columns: 1fr; }
+      .trim-grid { grid-template-columns: 1fr; }
       main { padding: 16px; }
       .api-key-row input { width: 160px; }
     }
@@ -633,6 +664,11 @@
             <a id="tts-download" class="btn btn-ghost" download="audio.mp3">⬇ Download</a>
             <button class="btn btn-ghost" onclick="copyAudioBase64()">📋 Copiar Base64</button>
           </div>
+          <hr class="divider" />
+          <div>
+            <div class="section-label">Performance</div>
+            <div class="response-box success" id="tts-metrics"></div>
+          </div>
         </div>
 
         <div id="tts-error" class="response-box error" style="display:none;"></div>
@@ -663,6 +699,34 @@
             <span style="color:var(--text-dim);font-size:12px;">ou URL:</span>
             <input type="text" id="clone-ref-url" placeholder="https://..." style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:7px 10px;font-size:13px;" />
           </div>
+        </div>
+
+        <div id="clone-trim-editor" class="trim-editor" style="display:none;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h3>Recorte do áudio</h3>
+            <span class="status-badge ok" id="clone-trim-badge">Arquivo carregado</span>
+          </div>
+          <div class="trim-meta" id="clone-trim-meta"></div>
+          <div class="audio-player-wrap">
+            <audio id="clone-editor-audio" controls preload="metadata"></audio>
+          </div>
+          <div class="trim-grid">
+            <div class="field">
+              <label>Início do trecho</label>
+              <input type="range" id="clone-trim-start" min="0" max="0" step="0.01" value="0" />
+              <span class="hint" id="clone-trim-start-label">0.00s</span>
+            </div>
+            <div class="field">
+              <label>Fim do trecho</label>
+              <input type="range" id="clone-trim-end" min="0" max="0" step="0.01" value="0" />
+              <span class="hint" id="clone-trim-end-label">0.00s</span>
+            </div>
+          </div>
+          <div class="audio-actions">
+            <button class="btn btn-ghost" onclick="previewCloneTrim()">▶ Ouvir trecho</button>
+            <button class="btn btn-ghost" onclick="resetCloneTrimSelection()">↺ Usar áudio inteiro</button>
+          </div>
+          <div class="response-box" id="clone-trim-summary"></div>
         </div>
 
         <div class="field">
@@ -813,6 +877,15 @@ let ttsAudioBlob = null;
 let clonedVoiceId = null;
 let foundVoiceId = null;
 let refMethod = 'none';
+const ttsPerf = { runs: [] };
+const cloneTrim = {
+  file: null,
+  objectUrl: '',
+  duration: 0,
+  start: 0,
+  end: 0,
+  previewing: false,
+};
 
 // ─── Init ─────────────────────────────────────────────────────
 const apiKeyEl = document.getElementById('apiKey');
@@ -1008,10 +1081,18 @@ ttsRefFile.addEventListener('change', () => {
 // ─── File drop: Clone ─────────────────────────────────────────
 const cloneRefFile = document.getElementById('clone-ref-file');
 const cloneDrop = document.getElementById('clone-drop');
+const cloneTrimStart = document.getElementById('clone-trim-start');
+const cloneTrimEnd = document.getElementById('clone-trim-end');
+const cloneEditorAudio = document.getElementById('clone-editor-audio');
 
 cloneRefFile.addEventListener('change', () => {
   if (cloneRefFile.files[0]) {
     document.getElementById('clone-ref-name').textContent = '✓ ' + cloneRefFile.files[0].name;
+    loadCloneTrimEditor(cloneRefFile.files[0]).catch(err => {
+      document.getElementById('clone-trim-badge').className = 'status-badge err';
+      document.getElementById('clone-trim-badge').textContent = 'Erro';
+      setCloneTrimMessage(err.message);
+    });
   }
 });
 
@@ -1022,8 +1103,38 @@ cloneRefFile.addEventListener('change', () => {
   if (e === 'drop' && ev.dataTransfer.files[0]) {
     cloneRefFile.files = ev.dataTransfer.files;
     document.getElementById('clone-ref-name').textContent = '✓ ' + ev.dataTransfer.files[0].name;
+    loadCloneTrimEditor(ev.dataTransfer.files[0]).catch(err => {
+      document.getElementById('clone-trim-badge').className = 'status-badge err';
+      document.getElementById('clone-trim-badge').textContent = 'Erro';
+      setCloneTrimMessage(err.message);
+    });
   }
 }));
+
+cloneTrimStart.addEventListener('input', () => {
+  cloneTrim.start = Number(cloneTrimStart.value);
+  if (cloneTrim.start > cloneTrim.end) cloneTrim.end = cloneTrim.start;
+  updateCloneTrimUi();
+  cloneEditorAudio.currentTime = cloneTrim.start;
+});
+
+cloneTrimEnd.addEventListener('input', () => {
+  cloneTrim.end = Number(cloneTrimEnd.value);
+  if (cloneTrim.end < cloneTrim.start) cloneTrim.start = cloneTrim.end;
+  updateCloneTrimUi();
+});
+
+cloneEditorAudio.addEventListener('timeupdate', () => {
+  if (!cloneTrim.previewing) return;
+  if (cloneEditorAudio.currentTime >= cloneTrim.end) {
+    cloneEditorAudio.pause();
+    cloneTrim.previewing = false;
+  }
+});
+
+cloneEditorAudio.addEventListener('pause', () => {
+  if (cloneEditorAudio.currentTime < cloneTrim.end) cloneTrim.previewing = false;
+});
 
 // ─── Build tag chips ──────────────────────────────────────────
 function buildChips(containerId, items, category) {
@@ -1101,6 +1212,314 @@ function setLoading(btnId, loading, label = '') {
   }
 }
 
+function safeFixed(n, digits = 2) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  return n.toFixed(digits);
+}
+
+function formatSeconds(sec) {
+  if (typeof sec !== 'number' || !Number.isFinite(sec)) return '—';
+  if (sec < 1) return `${Math.round(sec * 1000)} ms`;
+  return `${safeFixed(sec, 2)} s`;
+}
+
+function formatClock(sec) {
+  if (typeof sec !== 'number' || !Number.isFinite(sec)) return '—';
+  const totalMs = Math.round(sec * 1000);
+  const mins = Math.floor(totalMs / 60000);
+  const secs = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+}
+
+function mean(nums) {
+  if (!Array.isArray(nums) || nums.length === 0) return null;
+  const s = nums.reduce((a, b) => a + b, 0);
+  return s / nums.length;
+}
+
+function min(nums) {
+  if (!Array.isArray(nums) || nums.length === 0) return null;
+  return nums.reduce((a, b) => (a < b ? a : b), nums[0]);
+}
+
+function max(nums) {
+  if (!Array.isArray(nums) || nums.length === 0) return null;
+  return nums.reduce((a, b) => (a > b ? a : b), nums[0]);
+}
+
+async function getAudioDurationSecondsFromBlob(blob) {
+  try {
+    const buf = await blob.arrayBuffer();
+    const AC = getAudioContextCtor();
+    if (!AC) return null;
+    const ctx = new AC();
+    try {
+      const audioBuf = await ctx.decodeAudioData(buf.slice(0));
+      return audioBuf.duration;
+    } finally {
+      try { await ctx.close(); } catch {}
+    }
+  } catch {
+    return null;
+  }
+}
+
+function getAudioDurationSecondsFromElement(audioEl) {
+  return new Promise(resolve => {
+    let done = false;
+    const cleanup = () => {
+      audioEl.removeEventListener('loadedmetadata', onMeta);
+      audioEl.removeEventListener('durationchange', onMeta);
+      audioEl.removeEventListener('error', onErr);
+      clearTimeout(t);
+    };
+    const onMeta = () => {
+      if (done) return;
+      const d = audioEl.duration;
+      if (typeof d === 'number' && Number.isFinite(d) && d > 0) {
+        done = true;
+        cleanup();
+        resolve(d);
+      }
+    };
+    const onErr = () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve(null);
+    };
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      cleanup();
+      resolve(null);
+    }, 5000);
+
+    audioEl.addEventListener('loadedmetadata', onMeta);
+    audioEl.addEventListener('durationchange', onMeta);
+    audioEl.addEventListener('error', onErr);
+    onMeta();
+  });
+}
+
+function getAudioContextCtor() {
+  return window.AudioContext || window.webkitAudioContext;
+}
+
+async function decodeAudioFileToBuffer(file) {
+  const AC = getAudioContextCtor();
+  if (!AC) throw new Error('Seu navegador nao suporta edicao de audio via Web Audio.');
+  const ctx = new AC();
+  try {
+    const arrayBuf = await file.arrayBuffer();
+    return await ctx.decodeAudioData(arrayBuf.slice(0));
+  } finally {
+    try { await ctx.close(); } catch {}
+  }
+}
+
+function audioBufferToWavBlob(audioBuffer) {
+  const channels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const samples = audioBuffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const buf = new ArrayBuffer(44 + samples * blockAlign);
+  const view = new DataView(buf);
+  const write = (off, str) => [...str].forEach((c, i) => view.setUint8(off + i, c.charCodeAt(0)));
+
+  write(0, 'RIFF');
+  view.setUint32(4, 36 + samples * blockAlign, true);
+  write(8, 'WAVE');
+  write(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  write(36, 'data');
+  view.setUint32(40, samples * blockAlign, true);
+
+  let offset = 44;
+  const channelData = Array.from({ length: channels }, (_, i) => audioBuffer.getChannelData(i));
+  for (let i = 0; i < samples; i++) {
+    for (let ch = 0; ch < channels; ch++) {
+      const sample = Math.max(-1, Math.min(1, channelData[ch][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+function revokeCloneTrimUrl() {
+  if (!cloneTrim.objectUrl) return;
+  URL.revokeObjectURL(cloneTrim.objectUrl);
+  cloneTrim.objectUrl = '';
+}
+
+function setCloneTrimMessage(text) {
+  document.getElementById('clone-trim-summary').textContent = text;
+}
+
+function stopCloneTrimPreview() {
+  cloneTrim.previewing = false;
+  const audio = document.getElementById('clone-editor-audio');
+  audio.pause();
+}
+
+function updateCloneTrimUi() {
+  const startEl = document.getElementById('clone-trim-start');
+  const endEl = document.getElementById('clone-trim-end');
+  const startLabel = document.getElementById('clone-trim-start-label');
+  const endLabel = document.getElementById('clone-trim-end-label');
+  const meta = document.getElementById('clone-trim-meta');
+
+  if (!cloneTrim.duration) {
+    meta.textContent = '';
+    setCloneTrimMessage('Carregue um arquivo para habilitar o recorte.');
+    return;
+  }
+
+  const minGap = Math.min(0.1, cloneTrim.duration);
+  cloneTrim.start = Math.max(0, Math.min(cloneTrim.start, Math.max(0, cloneTrim.duration - minGap)));
+  cloneTrim.end = Math.max(cloneTrim.start + minGap, Math.min(cloneTrim.end, cloneTrim.duration));
+
+  startEl.max = String(cloneTrim.duration);
+  endEl.max = String(cloneTrim.duration);
+  startEl.value = String(cloneTrim.start);
+  endEl.value = String(cloneTrim.end);
+
+  startLabel.textContent = formatClock(cloneTrim.start);
+  endLabel.textContent = formatClock(cloneTrim.end);
+
+  const sliceSec = Math.max(0, cloneTrim.end - cloneTrim.start);
+  meta.textContent = `Duracao total: ${formatSeconds(cloneTrim.duration)} | Trecho atual: ${formatSeconds(sliceSec)}`;
+
+  const fullSelection = Math.abs(cloneTrim.start) < 0.01 && Math.abs(cloneTrim.end - cloneTrim.duration) < 0.01;
+  setCloneTrimMessage(
+    fullSelection
+      ? 'O arquivo completo sera enviado para a clonagem.'
+      : `Sera enviado somente o trecho entre ${formatClock(cloneTrim.start)} e ${formatClock(cloneTrim.end)}.`
+  );
+}
+
+async function loadCloneTrimEditor(file) {
+  const panel = document.getElementById('clone-trim-editor');
+  const badge = document.getElementById('clone-trim-badge');
+  const audio = document.getElementById('clone-editor-audio');
+
+  stopCloneTrimPreview();
+  revokeCloneTrimUrl();
+
+  cloneTrim.file = file;
+  cloneTrim.duration = 0;
+  cloneTrim.start = 0;
+  cloneTrim.end = 0;
+
+  badge.className = 'status-badge loading';
+  badge.textContent = 'Lendo arquivo';
+  panel.style.display = '';
+  setCloneTrimMessage('Lendo metadados do audio...');
+
+  cloneTrim.objectUrl = URL.createObjectURL(file);
+  audio.src = cloneTrim.objectUrl;
+
+  const duration = await getAudioDurationSecondsFromElement(audio);
+  if (duration == null) {
+    badge.className = 'status-badge err';
+    badge.textContent = 'Falha ao ler audio';
+    setCloneTrimMessage('Nao foi possivel abrir esse arquivo para recorte. O upload original ainda pode ser enviado.');
+    return;
+  }
+
+  cloneTrim.duration = duration;
+  cloneTrim.start = 0;
+  cloneTrim.end = duration;
+  badge.className = 'status-badge ok';
+  badge.textContent = 'Recorte pronto';
+  updateCloneTrimUi();
+}
+
+function resetCloneTrimSelection() {
+  if (!cloneTrim.duration) return;
+  cloneTrim.start = 0;
+  cloneTrim.end = cloneTrim.duration;
+  updateCloneTrimUi();
+}
+
+function previewCloneTrim() {
+  if (!cloneTrim.duration) return;
+  const audio = document.getElementById('clone-editor-audio');
+  cloneTrim.previewing = true;
+  audio.currentTime = cloneTrim.start;
+  audio.play().catch(() => {
+    cloneTrim.previewing = false;
+  });
+}
+
+async function buildClonedUploadFile(file) {
+  if (!file || !cloneTrim.duration) return file;
+
+  const fullSelection = Math.abs(cloneTrim.start) < 0.01 && Math.abs(cloneTrim.end - cloneTrim.duration) < 0.01;
+  if (fullSelection) return file;
+
+  const audioBuffer = await decodeAudioFileToBuffer(file);
+  const sampleRate = audioBuffer.sampleRate;
+  const startSample = Math.max(0, Math.floor(cloneTrim.start * sampleRate));
+  const endSample = Math.min(audioBuffer.length, Math.ceil(cloneTrim.end * sampleRate));
+  const frameCount = Math.max(1, endSample - startSample);
+  const trimmed = new AudioBuffer({
+    length: frameCount,
+    numberOfChannels: audioBuffer.numberOfChannels,
+    sampleRate,
+  });
+
+  for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+    const source = audioBuffer.getChannelData(ch).subarray(startSample, endSample);
+    trimmed.copyToChannel(source, ch, 0);
+  }
+
+  const wav = audioBufferToWavBlob(trimmed);
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'audio';
+  return new File([wav], `${baseName}_trim.wav`, { type: 'audio/wav' });
+}
+
+function renderTtsMetrics(last) {
+  const el = document.getElementById('tts-metrics');
+  if (!el) return;
+  if (!last) {
+    el.textContent = '—';
+    return;
+  }
+
+  const rtf = (typeof last.genMs === 'number' && typeof last.audioSec === 'number' && last.audioSec > 0)
+    ? (last.genMs / 1000) / last.audioSec
+    : null;
+
+  const rtfs = ttsPerf.runs.map(r => r.rtf).filter(x => typeof x === 'number' && Number.isFinite(x));
+  const gens = ttsPerf.runs.map(r => r.genMs / 1000).filter(x => typeof x === 'number' && Number.isFinite(x));
+  const auds = ttsPerf.runs.map(r => r.audioSec).filter(x => typeof x === 'number' && Number.isFinite(x));
+
+  const lines = [];
+  lines.push(`Tempo de geração: ${formatSeconds(last.genMs / 1000)}`);
+  lines.push(`Duração do áudio: ${formatSeconds(last.audioSec)}`);
+  lines.push(`RTF (geração ÷ áudio): ${rtf == null ? '—' : safeFixed(rtf, 3)}`);
+
+  if (rtfs.length > 0) {
+    lines.push('');
+    lines.push(`Sessão: ${ttsPerf.runs.length} execução(ões)`);
+    lines.push(`RTF médio: ${safeFixed(mean(rtfs), 3)} | min: ${safeFixed(min(rtfs), 3)} | max: ${safeFixed(max(rtfs), 3)}`);
+    lines.push(`Geração média: ${safeFixed(mean(gens), 2)} s | Áudio médio: ${safeFixed(mean(auds), 2)} s`);
+  }
+
+  el.textContent = lines.join('\n');
+}
+
 async function fileToBase64(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -1141,9 +1560,11 @@ async function generateSpeech() {
   if (!input) { alert('Digite um texto.'); return; }
   if (input.length > 5000) { alert('Texto excede 5000 caracteres.'); return; }
 
+  const t0 = performance.now();
   setLoading('tts-btn', true);
   document.getElementById('tts-result').style.display = 'none';
   document.getElementById('tts-error').style.display = 'none';
+  renderTtsMetrics(null);
 
   const body = {
     model: document.getElementById('tts-model').value,
@@ -1205,6 +1626,7 @@ async function generateSpeech() {
     }
 
     ttsAudioBlob = blob;
+    const genMs = performance.now() - t0;
 
     const url = URL.createObjectURL(blob);
     const audio = document.getElementById('tts-audio');
@@ -1214,6 +1636,16 @@ async function generateSpeech() {
     const dl = document.getElementById('tts-download');
     dl.href = url;
     dl.download = `audio_${Date.now()}.${ext}`;
+
+    let audioSec = await getAudioDurationSecondsFromBlob(blob);
+    if (audioSec == null) audioSec = await getAudioDurationSecondsFromElement(audio);
+
+    const rtf = (typeof audioSec === 'number' && Number.isFinite(audioSec) && audioSec > 0)
+      ? (genMs / 1000) / audioSec
+      : null;
+
+    ttsPerf.runs.push({ genMs, audioSec, rtf });
+    renderTtsMetrics({ genMs, audioSec, rtf });
 
     document.getElementById('tts-result').style.display = '';
     setLoading('tts-btn', false, '<span>▶</span> Gerar Áudio');
@@ -1255,8 +1687,9 @@ async function createVoice() {
 
     if (hasFile) {
       // multipart/form-data
+      const uploadFile = await buildClonedUploadFile(cloneRefFile.files[0]);
       const fd = new FormData();
-      fd.append('ref_audio', cloneRefFile.files[0]);
+      fd.append('ref_audio', uploadFile, uploadFile.name);
       fd.append('ref_text', refText);
       const desc = document.getElementById('clone-description').value.trim();
       if (desc) fd.append('description', desc);
